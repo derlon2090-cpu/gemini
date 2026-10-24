@@ -1,6 +1,8 @@
 """Personal link health monitor with SQLite history and a local dashboard."""
 import asyncio
 import csv
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -24,7 +26,6 @@ DEFAULT_DB_PATH = Path("/tmp/link_monitor.sqlite3") if os.environ.get("VERCEL") 
 DB_PATH = Path(os.environ.get("LINK_MONITOR_DB", str(DEFAULT_DB_PATH)))
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_SECONDS = 86400
-sessions: dict[str, float] = {}
 login_attempts: dict[str, tuple[int, float]] = {}
 jobs: dict[str, dict] = {}
 db: aiosqlite.Connection | None = None
@@ -109,11 +110,20 @@ app = FastAPI(title="مراقبة صحة الروابط", lifespan=lifespan)
 
 def session_ok(request: Request) -> bool:
     token = request.cookies.get(SESSION_COOKIE)
-    expires = sessions.get(token or "", 0)
-    if expires <= time.monotonic():
-        sessions.pop(token or "", None)
+    secret = os.environ.get("SESSION_SECRET") or os.environ.get("ADMIN_PASSWORD")
+    if not token or not secret:
         return False
-    return True
+    try:
+        issued, nonce, signature = token.rsplit(".", 2)
+        issued_at = int(issued)
+    except (ValueError, TypeError):
+        return False
+    now = int(time.time())
+    if issued_at > now + 60 or now - issued_at > SESSION_TTL_SECONDS:
+        return False
+    payload = f"{issued}.{nonce}"
+    expected = hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).hexdigest()
+    return secrets.compare_digest(signature, expected)
 
 
 def require_auth(request: Request):
@@ -395,8 +405,12 @@ async def login(request: Request, response: Response):
         login_attempts[ip] = (attempts, now + 900 if attempts >= 5 else 0.0)
         raise HTTPException(401, "كلمة المرور غير صحيحة")
     login_attempts.pop(ip, None)
-    token = secrets.token_urlsafe(32)
-    sessions[token] = now + SESSION_TTL_SECONDS
+    issued = str(int(time.time()))
+    nonce = secrets.token_urlsafe(32)
+    payload = f"{issued}.{nonce}"
+    secret = os.environ.get("SESSION_SECRET") or password
+    signature = hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).hexdigest()
+    token = f"{payload}.{signature}"
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_TTL_SECONDS, httponly=True,
                         secure=os.environ.get("COOKIE_SECURE", "0").lower() in {"1", "true", "yes"},
                         samesite="strict", path="/")
@@ -405,7 +419,6 @@ async def login(request: Request, response: Response):
 
 @app.post("/api/logout")
 async def logout(request: Request, response: Response):
-    sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"success": True}
 
@@ -700,4 +713,6 @@ async def export_run(run_id: str, request: Request, format: str = "csv"):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000)
+    port = int(os.environ.get("PORT", "8000"))
+    host = os.environ.get("HOST", "0.0.0.0" if "PORT" in os.environ else "127.0.0.1")
+    uvicorn.run("app:app", host=host, port=port)
