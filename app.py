@@ -20,7 +20,8 @@ from pydantic import BaseModel, Field
 from url_pattern_checker import DEFAULT_ERROR_KEYWORDS, DEFAULT_VALID_KEYWORDS, STANDARD_HEADERS, check_url, generate_urls, validate_url
 
 BASE = Path(__file__).resolve().parent
-DB_PATH = Path(os.environ.get("LINK_MONITOR_DB", str(BASE / "link_monitor.sqlite3")))
+DEFAULT_DB_PATH = Path("/tmp/link_monitor.sqlite3") if os.environ.get("VERCEL") == "1" else BASE / "link_monitor.sqlite3"
+DB_PATH = Path(os.environ.get("LINK_MONITOR_DB", str(DEFAULT_DB_PATH)))
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_SECONDS = 86400
 sessions: dict[str, float] = {}
