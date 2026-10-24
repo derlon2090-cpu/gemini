@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>دخول المشرف | فاحص الروابط</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #090f1b; color: #e8eef8; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 20px; background: radial-gradient(ellipse at 50% 35%, #172943 0, #090f1b 65%); }
+    .card { width: min(100%, 410px); padding: 32px; background: rgba(18,29,48,.94); border: 1px solid #2b3d57; border-radius: 18px; box-shadow: 0 24px 80px #0008; }
+    .mark { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 13px; background: #123d59; color: #70d7ff; font-size: 23px; margin-bottom: 22px; }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; } p { color: #9fb0c7; margin: 0 0 24px; font-size: .95rem; }
+    label { display: block; color: #bfccdc; margin-bottom: 8px; font-size: .9rem; }
+    input { width: 100%; padding: 13px 14px; background: #0a1220; border: 1px solid #354963; border-radius: 9px; color: white; font: inherit; outline: none; }
+    input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px #38bdf822; }
+    button { width: 100%; margin-top: 17px; padding: 12px; border: 0; border-radius: 9px; color: #071624; background: #55c7f1; font: inherit; font-weight: 750; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #message { min-height: 22px; margin-top: 14px; color: #ff9696; font-size: .88rem; }
+    .foot { text-align: center; margin-top: 20px; color: #70839d; font-size: .78rem; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="mark" aria-hidden="true">⌁</div>
+    <h1>دخول المشرف</h1>
+    <p>سجّل الدخول للوصول إلى لوحة فحص الروابط.</p>
+    <form id="login-form">
+      <label for="password">كلمة المرور</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button id="submit" type="submit">تسجيل الدخول</button>
+      <div id="message" role="alert" aria-live="polite"></div>
+    </form>
+    <div class="foot">جلسة خاصة بالمشرف · تنتهي بعد 24 ساعة</div>
+  </main>
+  <script>
+    const form = document.getElementById('login-form');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('submit');
+      const message = document.getElementById('message');
+      button.disabled = true; message.textContent = '';
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: document.getElementById('password').value })
+        });
+        if (response.ok) { location.replace('/dashboard'); return; }
+        const payload = await response.json().catch(() => ({}));
+        message.textContent = response.status === 429 ? 'محاولات كثيرة؛ انتظر 15 دقيقة ثم أعد المحاولة.' : (payload.detail || 'تعذر تسجيل الدخول.');
+      } catch (_) { message.textContent = 'تعذر الاتصال بالخادم.'; }
+      button.disabled = false;
+    });
+  </script>
+</body>
+</html>
